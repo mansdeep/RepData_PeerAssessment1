@@ -5,21 +5,179 @@ output:
     keep_md: true
 ---
 
+##         Information      
+
+Author         :  <span style ="color :green"> Manas Chatterjee  </span> <br>
+Date           :  March, 2019 <br>
+Purpose        :  Week 2 project on Reproducible Research in Johns Hopkins University Data Science Courses 
+
 
 ## Loading and preprocessing the data
 
+Install packages if not available   
 
+```{r load_packages, echo=TRUE, warning=FALSE, message=FALSE}
+# This block of code checks if the package is installed, and if not, installs it
+list.of.packages <- c("dplyr", "tidyr", "RColorBrewer","ggthemes","ggplot2")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages)
+```
 
-## What is mean total number of steps taken per day?
+Load packages in the environment  
 
+```{r load_libraries, echo=TRUE, warning=FALSE, message=FALSE}
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(ggthemes)
+library(ggplot2)
+```
 
+Check if the file exists. If not download the file from given link 
+
+```{r data_download,echo=TRUE,warning=FALSE, message=FALSE}
+temp <- tempfile()
+if (!file.exists('./data/files/activity.csv')) {
+        print(paste0("You did not have the file; downloaded.... "))        
+        download.file("https://d396qusza40orc.cloudfront.net/repdata%2Fdata%2Factivity.zip",temp)
+        unzip(temp,exdir = './data/files')
+} 
+```
+
+Read the data into a dataframe `activity` 
+
+```{r data_load,echo=TRUE,warning=FALSE, message=FALSE}
+activity <- read.csv('./data/files/activity.csv', sep = ",",na.strings = "NA" )
+# Now, use `str` to look at the structure of the dataframe
+str(activity)
+```
+
+## What is mean total number of steps taken per day? 
+
+```{r total_steps_per_day, echo = TRUE}
+per_day <- activity%>%
+    na.omit()%>%                            # removing the na data
+    group_by(date)%>%
+    summarise(total.steps=sum(steps),
+              average.steps = mean(steps))
+head(per_day)                               # This dataset contains MEAN total number of steps taken each day
+```
+Sneak peak into the dataset
+ 
+```{r historgram_plot, echo=TRUE, message=FALSE,warning=FALSE}
+g <- ggplot(per_day,aes(total.steps))
+g + geom_histogram(binwidth = 1000, aes(fill=..count..))+
+        stat_function(fun = dnorm, colour = "red")+
+        scale_y_continuous(breaks=c(0,4,8,12))+
+        scale_colour_economist()+
+        labs(x="Steps taken in a single day",y="Count",title="Histogram of number of steps taken in a day ")
+```
+<br>Overall MEAN and MEDIAN
+
+```{r mean_n_median, echo=TRUE,warnings=FALSE,message=FALSE}
+# Overall mean - MEAN of average number of steps taken in a day
+print(paste0(as.integer(mean(per_day$total.steps))))
+# Overall median - MEDIAN of average number of steps taken in a day
+print(paste0(median(per_day$total.steps)))
+```
 
 ## What is the average daily activity pattern?
 
+Finding MEAN steps for each interval
 
+```{r interval_data, echo=TRUE,warnings=FALSE,message=FALSE}
+interval_activity <- activity%>%
+    na.omit()%>%                            # removing the na data
+    group_by(interval)%>%
+    summarise(average.steps = mean(steps))
+```
 
+Time series plot by interval
+
+```{r max_interval, echo=TRUE,warnings=FALSE,message=FALSE}
+l <- ggplot(interval_activity,aes(x=interval,y=average.steps))
+l + geom_line(aes(colour=average.steps))+
+#scale_x_continuous(breaks=seq(0,2500,by=250))+
+#theme_economist()+
+geom_text(aes(label=ifelse(interval_activity$average.steps == max(interval_activity$average.steps),
+                           as.numeric(interval_activity$interval),'')))+
+        labs(x="5 minute intervals",y="Average Steps",
+             title="The busiest 5-minute interval")
+```
+<br>Result from the plot
+
+```{r max_print, echo=TRUE}
+print(paste0("The 5-minute interval with the maximum average steps is ",
+interval_activity$interval[interval_activity$average.steps == max(interval_activity$average.steps)],
+' with number of average steps ',as.integer(max(interval_activity$average.steps))))
+```
 ## Imputing missing values
 
+Checking for NA or missing values
 
+```{r NA_columns, echo=TRUE}
+sapply(activity,function(x) sum(is.na(x)))
+```
+Filling in missing values with MEAN by the same interval
+
+```{r NA_replace, echo=TRUE}
+new_activity <- activity%>%
+    group_by(interval)%>%
+    mutate(steps = ifelse(is.na(steps),mean(steps,na.rm=TRUE),steps))
+    
+filled_activity <- new_activity%>%
+    group_by(date)%>%
+    summarise(total.steps=sum(steps),
+              average.steps = mean(steps))
+    
+    
+head(filled_activity)                       # Summarized steps by day after filling in missing values
+```
+
+Histogram with new filled data (imputed).
+
+```{r filled_hist, echo=TRUE}
+g <- ggplot(filled_activity,aes(total.steps))
+g + geom_histogram(binwidth = 1000, aes(fill=..count..))+
+        stat_function(fun = dnorm, colour = "red")+
+        labs(x="Steps taken in a single day",y="Count",
+             title="Histogram of number of steps taken in a day (after filling in missing data)")
+```
+
+<br>Overall MEAN and MEDIAN
+
+```{r mean_n_median_after, echo=TRUE,warnings=FALSE,message=FALSE}
+# Overall mean - MEAN of average number of steps taken in a day
+print(paste0(as.integer(mean(filled_activity$total.steps))))
+# Overall median - MEDIAN of average number of steps taken in a day
+print(paste0(as.integer(median(filled_activity$total.steps))))
+```
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+Convert date column into Date type
+
+```{r factors, echo=TRUE}
+new_activity$date <- as.Date(new_activity$date)
+weekdays1 <- c('Monday',"Tuesday","Wednesday","Thursday","Friday")
+new_activity$Weekday <- c('weekend','weekday')[(weekdays(new_activity$date) %in% weekdays1)+ 1L]
+head(new_activity)
+```
+
+Checking the factors
+
+```{r factor_check, echo=TRUE}
+weekdays(new_activity$date[6])
+filled_interval_activity <- new_activity%>%
+    group_by(interval,Weekday)%>%
+    summarise(average.steps = mean(steps))
+head(filled_interval_activity)
+```
+Panel plot of activity comparing weekdays and weekends
+
+```{r final_plot, echo=TRUE}
+m <- ggplot(filled_interval_activity,aes(x=interval,y=average.steps, fill=Weekday))
+m + geom_line(aes(colour=Weekday)) +
+    facet_grid(Weekday~.)+ 
+    labs(x="5 minute intervals",y="Average Steps",title="The busiest 5-minute interval (Weekend vs. Weekdays)")
+```
